@@ -1,0 +1,97 @@
+#!/bin/sh
+
+# Hook utilises method of adding a file to the commit automatically
+# https://stackoverflow.com/questions/3284292/can-a-git-hook-automatically-add-files-to-the-commit?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+
+if [ -e .commit ]
+then
+
+    ### MAIN ###
+
+    # Remove Marker file
+    rm .commit
+    
+    # Define Main Variables
+    SELF_DIR=`git rev-parse --show-toplevel`
+    PERMISSIONS=$SELF_DIR/transfer/.permissions
+    DATABASE=$SELF_DIR/transfer/.database
+
+    # Set the default permissions for all file created in this hook
+    umask 0066
+
+
+
+    ### CLEAR OLD FILES ###
+
+    # Clear pre-existing transfer files
+
+    # Clear the permissions database file if it already exists
+    if [ -e $PERMISSIONS ]
+    then
+        echo "Removing old Permissions file"
+        rm -f $PERMISSIONS
+    fi
+
+    # Clear the database dump if it already exists
+    if [ -e $DATABASE ]
+    then
+        echo 'Removing old database file'
+        rm -f $DATABASE
+    fi
+
+
+
+    ### TRANSFER DB CHANGES FROM PROD ###
+
+    /root/scripts/cron/sqlmonitor/monitor.py --flush-log --config %%CONFIGNAMEHERE%% --file /var/lib/mysql/general.log --run
+
+
+
+    ### CREATE NEW DATABASE DUMP ###
+
+    # Create a dump of the database and store it
+
+    mysqldump %%DATABASENAMEHERE%% > $DATABASE
+
+    echo 'Stored Database Backup in transfer/.database'
+
+
+
+    ### BACKUP PERMISSIONS ###
+
+    # Backup file permissions
+
+    echo -n "Backing-up file permissions..."
+
+    # Save the old Internal File Separator
+    IFS_OLD=$IFS;
+    # Set it to new line characters
+    IFS=$'\n'
+
+    # Create the permissions file again
+
+    for FILE in `git ls-files`
+    do
+        # Save the permissions of all the files in the index
+        echo $FILE";"`stat -c "%a;%U;%G" $FILE` >> $PERMISSIONS
+    done
+
+    # Restore the old Internal File Sperator
+    IFS=$IFS_OLD
+
+    echo "Stored File Permissions in transfer/.permissions"
+
+    # Add created files to git
+
+
+
+    ### ADD NEW FILES TO COMMIT ###
+
+    git add $PERMISSIONS
+    git add $DATABASE
+
+    # Ammend the commit
+    git commit --amend -C HEAD --no-verify
+
+fi
+exit

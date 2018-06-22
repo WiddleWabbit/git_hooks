@@ -1,0 +1,68 @@
+#!/bin/sh
+#
+# After recieving changes via a git push, apply them.
+
+# Move up from pub directory
+cd /home/%%CPANELUSERHERE%%/public_html/
+
+
+
+# Change the umask of the process before checkout so all new files are only readable by root
+# This is for the protection of the sensitive transfer files
+umask 0077
+
+
+
+# Define the git directory and checkout the changes pushed
+GIT_DIR=/home/%%CPANELUSERHERE%%/public_html/.git
+GIT_WORK_TREE=/home/%%CPANELUSERHERE%%/public_html git checkout -f
+
+
+
+# Define variables
+SELF_DIR=/home/%%CPANELUSERHERE%%/public_html
+PERMISSIONS=$SELF_DIR/transfer/.permissions
+DATABASE=$SELF_DIR/transfer/.database
+
+
+
+# Delete the old database and content, then recreate it, assign permissions and import the dev database copy
+
+uapi --user=%%CPANELUSERHERE%% Mysql delete_database name=%%DATABASENAMEHERE%%
+uapi --user=%%CPANELUSERHERE%% Mysql create_database name=%%DATABASENAMEHERE%%
+uapi --user=%%CPANELUSERHERE%% Mysql set_privileges_on_database user=%%DATABASEUSERHERE%% database=%%DATABASENAMEHERE%% privileges=ALL%20PRIVILEGES
+
+# Required changes for prod vs dev
+
+#MAGNETO 2 SPECIFIC CHANGES
+#url_query='UPDATE  `'%%CPANELUSERHERE%%'_'%%DBSUFFIX%%'`.`core_config_data` SET  `value` =  '\'https://www.oemgroup.com.au/\'' WHERE  `core_config_data`.`config_id` =2;'
+#securl_query='UPDATE  `'%%CPANELUSERHERE%%'_'%%DBSUFFIX%%'`.`core_config_data` SET  `value` =  '\'https://www.oemgroup.com.au/\'' WHERE  `core_config_data`.`config_id` =3;'
+#cookie_query='UPDATE  `'%%CPANELUSERHERE%%'_'%%DBSUFFIX%%'`.`core_config_data` SET  `value` =  '\'www.oemgroup.com.au\'' WHERE  `core_config_data`.`config_id` =92;'
+
+mysql -u root -p%%PASSWORDHERE%% -h localhost %%DATABASENAMEHERE%% << EOF
+    USE %%DATABASENAMEHERE%%;
+    SET foreign_key_checks=0;
+    SOURCE $DATABASE
+    $url_query;						<- MAGENTO SPECIFIC
+    $securl_query;					<- MAGENTO SPECIFIC
+    $cookie_query;					<- MAGENTO SPECIFIC
+EOF
+
+
+
+echo -n "Restoring file permissions and ownership..."
+runperm=$SELF_DIR/.git/hooks/permissions.py
+
+$runperm
+
+
+
+echo "OK"
+echo 
+
+
+
+echo "Disabling Maintenance Mode"
+
+# Disable Maintenance Mode
+rm -f /home/%%CPANELUSERHERE%%/public_html/var/.maintenance.flag
