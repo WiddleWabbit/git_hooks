@@ -1,5 +1,6 @@
 #!/bin/sh
-
+# Dev site hook
+# Modify the commit to include extra transfer files including permissions list and database dump
 # Hook utilises method of adding a file to the commit automatically
 # https://stackoverflow.com/questions/3284292/can-a-git-hook-automatically-add-files-to-the-commit?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
 
@@ -15,6 +16,7 @@ then
     SELF_DIR=`git rev-parse --show-toplevel`
     PERMISSIONS=$SELF_DIR/transfer/.permissions
     DATABASE=$SELF_DIR/transfer/.database
+    PRIVATE_FILES=$SELF_DIR/transfer/private_files
 
     # Set the default permissions for all file created in this hook
     umask 0066
@@ -39,19 +41,27 @@ then
         rm -f $DATABASE
     fi
 
+    # Clear the old private files if they are there
+    if [ -e $PRIVATE_FILES ]
+    then
+        echo "Removing old private files"
+        rm -rf $PRIVATE_FILES
+    fi
 
+    ### PREPARE PRIVATE FILES DIR ###
 
-    ### TRANSFER DB CHANGES FROM PROD ###
+    # Copy private files folder into transfer
 
-    /root/scripts/cron/sqlmonitor/monitor.py --flush-log --config %%CONFIGNAMEHERE%% --file /var/lib/mysql/general.log --run
+    cp -r $SELF_DIR/../private_files $PRIVATE_FILES
 
+    echo 'Copied private files directory into transfer/private_files'
 
 
     ### CREATE NEW DATABASE DUMP ###
 
     # Create a dump of the database and store it
 
-    mysqldump %%DATABASENAMEHERE%% > $DATABASE
+    mysqldump -u devuser -pPassword -h localhost db_name > $DATABASE
 
     echo 'Stored Database Backup in transfer/.database'
 
@@ -69,12 +79,18 @@ then
     IFS=$'\n'
 
     # Create the permissions file again
+    for file in $(find . -print | grep -v .git); do echo $file";"$(stat -c "%a;%U;%G" $file) >> $PERMISSIONS; done
 
-    for FILE in `git ls-files`
-    do
-        # Save the permissions of all the files in the index
-        echo $FILE";"`stat -c "%a;%U;%G" $FILE` >> $PERMISSIONS
-    done
+    #for FILE in `git ls-files`
+    #do
+    #    # Save the permissions of all the files in the index
+    #    echo $FILE";"`stat -c "%a;%U;%G" $FILE` >> $PERMISSIONS
+    #done
+    #for FILE in `find . -type d | grep -v .git`
+    #do
+    #    # Save the permissions of all the files in the index
+    #    echo $FILE";"`stat -c "%a;%U;%G" $FILE` >> $PERMISSIONS
+    #done
 
     # Restore the old Internal File Sperator
     IFS=$IFS_OLD
@@ -89,6 +105,10 @@ then
 
     git add $PERMISSIONS
     git add $DATABASE
+    git add $PRIVATE_FILES
+
+    echo 'Added all files to commit'
+    echo 'Amending commit...'
 
     # Ammend the commit
     git commit --amend -C HEAD --no-verify

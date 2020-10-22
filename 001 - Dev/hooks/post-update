@@ -1,0 +1,21 @@
+#!/bin/sh
+# Prod/Dev site hook
+# After recieving changes via a git push, apply them. Also after reversion of dev to a previous version.
+
+# Move to correct dir
+cd /home/devoem/public_html/
+
+
+
+# Change the umask of the process before checkout so all new files are only readable by root
+# This is for the protection of the sensitive transfer files
+umask 0077
+
+
+
+# Define the git directory and checkout the changes pushed
+GIT_DIR=/home/devuser/public_html/.git
+GIT_WORK_TREE=/home/devuser/public_html git checkout -f
+
+echo -n "OK"
+echo -n

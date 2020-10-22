@@ -1,0 +1,21 @@
+#!/bin/sh
+# Prod site hook
+# After recieving changes via a git push, apply them.
+
+# Move to correct dir
+cd /home/produser/public_html/
+
+
+
+# Change the umask of the process before checkout so all new files are only readable by root
+# This is for the protection of the sensitive transfer files
+umask 0077
+
+
+
+# Define the git directory and checkout the changes pushed
+GIT_DIR=/home/produser/public_html/.git
+GIT_WORK_TREE=/home/produser/public_html git checkout -f
+
+echo -n "OK "
+echo -n

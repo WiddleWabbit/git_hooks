@@ -1,0 +1,43 @@
+#!/bin/sh
+# Dev site hook
+# Run by the post-update hook through the 'git checkout -f'
+
+HOME_DIR=/home/devuser
+SELF_DIR=/home/devuser/public_html
+PERMISSIONS=$SELF_DIR/transfer/.permissions
+DATABASE=$SELF_DIR/transfer/.database
+PRIVATEFILES=$SELF_DIR/transfer/private_files
+
+
+# Delete the old database and content, then recreate it, assign permissions and import the dev database copy
+echo -n "Using API to recreate Database using dump"
+virtualmin delete-database --domain fullyqualifieddomainname --name db_name --type mysql
+virtualmin create-database --domain fullyqualifieddomainname --name db_name --type mysql
+# cPanel Version
+#uapi --user=devuser Mysql delete_database name=devuser_site
+#uapi --user=devuser Mysql create_database name=devuser_site
+#uapi --user=devuser Mysql set_privileges_on_database user=devuser_user database=devuser_site privileges=ALL%20PRIVILEGES
+mysql -u devuser -pPassword -h localhost db_name << EOF
+    USE devuser_site;
+    SET foreign_key_checks=0;
+    SOURCE $DATABASE;
+EOF
+echo -n "OK"
+
+# Update the settings.php file
+echo -n "Updating Settings.php..."
+sed -i "s/devuser/devuser/g" /home/devuser/public_html/sites/default/settings.php
+echo -n "OK"
+
+
+# Restore file permissions
+echo -n "Restoring file permissions and ownership..."
+runperm=$SELF_DIR/.git/hooks/permissions.py
+$runperm
+echo -n "OK"
+
+# Move the private files to original location
+echo -n "Moving private file directory into original location"
+cp -r $PRIVATEFILES $HOME_DIR/
+chown -R devuser:devuser $HOME_DIR/private_files
+chmod -R 770 $HOME_DIR/private_files

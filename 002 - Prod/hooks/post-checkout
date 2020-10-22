@@ -1,0 +1,58 @@
+#!/bin/sh
+# Prod site hook
+# Run by the post-update hook through the 'git checkout -f'
+
+SELF_DIR=/home/produser/public_html
+PERMISSIONS=$SELF_DIR/transfer/.permissions
+DATABASE=$SELF_DIR/transfer/.database
+PRIVATEFILES=$SELF_DIR/transfer/private_files
+
+
+# Delete the old database and content, then recreate it, assign permissions and import the dev database copy
+echo -n "Using cpanel API to recreate Database using dump "
+echo -n
+virtualmin delete-database --domain fullyqualifieddomainname --name db_name --type mysql
+virtualmin create-database --domain fullyqualifieddomainname --name db_name --type mysql
+# cPanel Version
+#uapi --user=produser Mysql delete_database name=produser_site
+#uapi --user=produser Mysql create_database name=produser_site
+#uapi --user=produser Mysql set_privileges_on_database user=produser_user database=produser_site privileges=ALL%20PRIVILEGES
+mysql -u produser -pPassword -h localhost db_name << EOF
+    USE produser_site;
+    SET foreign_key_checks=0;
+    SOURCE $DATABASE;
+EOF
+echo -n "OK "
+echo -n
+
+# Update the settings.php file
+echo -n "Updating Settings.php... "
+echo -n
+sed -i "s/devuser/produser/g" /home/produser/public_html/sites/default/settings.php
+echo -n "OK "
+echo -n
+
+# Restore file permissions
+echo -n "Restoring file permissions and ownership... "
+echo -n
+runperm=$SELF_DIR/.git/hooks/permissions.py
+$runperm
+echo -n "OK "
+echo -n
+
+# Move the private files to original location
+echo -n "Moving private file directory into original location "
+echo -n
+if [ -e $SELF_DIR/../private_files ]
+    then
+    rm -rf $SELF_DIR/../private_files
+    mv -f $PRIVATEFILES $SELF_DIR/../private_files
+    chown -R produser:produser $SELF_DIR/../private_files
+    chmod -R 770 $SELF_DIR/../private_files
+fi
+
+# Replace .htaccess to ensure www redirect
+echo -n "Replacing .htaccess to ensure www redirect "
+echo -n
+cp $SELF_DIR/.htaccess.prod $SELF_DIR/.htaccess
+echo -n "OK "
